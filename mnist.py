@@ -8,10 +8,13 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
+from quantization import quantize, quantize_conv_layer
+
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, quantized=False):
         super(Net, self).__init__()
+        self.quant_mode = quantized
         self.conv1 = nn.Conv2d(1, 32, 3, 1)
         self.conv2 = nn.Conv2d(32, 64, 3, 1)
         self.dropout1 = nn.Dropout(0.25)
@@ -19,7 +22,7 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(9216, 128)
         self.fc2 = nn.Linear(128, 10)
 
-    def forward(self, x):
+    def _forward(self, x):
         x = self.conv1(x)
         x = F.relu(x)
         x = self.conv2(x)
@@ -33,6 +36,32 @@ class Net(nn.Module):
         x = self.fc2(x)
         output = F.log_softmax(x, dim=1)
         return output
+
+    def _forward_quant(self, x):
+        x = quantize(x)[0]
+        quantize_conv_layer(self.conv1)
+        x = self.conv1(x)
+        x = F.relu(x)
+        quantize_conv_layer(self.conv2)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        quantize_conv_layer(self.fc1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout2(x)
+        quantize_conv_layer(self.fc2)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+
+    def forward(self, x):
+        if self.quant_mode:
+            return self._forward_quant(x)
+        else:
+            return self._forward(x)
 
 
 def train(model, device, train_loader, optimizer, epoch):
@@ -96,7 +125,7 @@ def main():
     train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
 
-    model = Net()
+    model = Net(quantized=True)
     # model.load_state_dict(torch.load("mnist_cnn.pt"))
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -104,11 +133,11 @@ def main():
     scheduler = StepLR(optimizer, step_size=1, gamma=0.7)
     EPOCHS = 2
     for epoch in range(1, EPOCHS + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
+        train(model, device, train_loader, optimizer, epoch)
         test(model, device, test_loader)
         scheduler.step()
 
-    torch.save(model.state_dict(), "mnist_cnn.pt")
+    torch.save(model.state_dict(), "mnist_cnn_quant.pt")
 
 
 if __name__ == '__main__':
