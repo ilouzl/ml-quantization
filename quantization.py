@@ -27,4 +27,13 @@ def quantize_conv_layer(conv, bits=8):
         # conv.bias = (conv.bias - a) / s
     return a, b, s
 
+def quantize_tensor(t, bits=8):
+    """
+    Quantize an arbitrary tensor.
+    """
+    with torch.no_grad():
+        w, a, b, s = quantize(t, bits)
+        t.data = w
+    return a, b, s
+
 

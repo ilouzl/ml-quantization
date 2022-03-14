@@ -8,7 +8,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
-from quantization import quantize, quantize_conv_layer
+from quantization import quantize_tensor, quantize_conv_layer
 
 
 class Net(nn.Module):
@@ -38,23 +38,28 @@ class Net(nn.Module):
         return output
 
     def _forward_quant(self, x):
-        x = quantize(x)[0]
+        quantize_tensor(x)
         quantize_conv_layer(self.conv1)
         x = self.conv1(x)
         x = F.relu(x)
+        quantize_tensor(x)
         quantize_conv_layer(self.conv2)
         x = self.conv2(x)
         x = F.relu(x)
         x = F.max_pool2d(x, 2)
+        quantize_tensor(x)
         x = self.dropout1(x)
         x = torch.flatten(x, 1)
         quantize_conv_layer(self.fc1)
         x = self.fc1(x)
         x = F.relu(x)
+        quantize_tensor(x)
         x = self.dropout2(x)
         quantize_conv_layer(self.fc2)
         x = self.fc2(x)
+        quantize_tensor(x)
         output = F.log_softmax(x, dim=1)
+        quantize_tensor(output)
         return output
 
     def forward(self, x):
